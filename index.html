@@ -2209,7 +2209,7 @@
             <!-- 主標題：知海標準字 -->
             <h1 class="hero-title">
                 <span class="sr-only">知海 SEASENSE</span>
-                <img src="images/zhihai-wordmark.png" alt="知海">
+                <img src="images/zhihai-wordmark.png" alt="知海" onerror="this.onerror=null;this.src='zhihai-wordmark.png'">
             </h1>
 
             <!-- 左下角 CONTINUE -->
@@ -4666,11 +4666,12 @@ window.SEASENSE.get = function (m) { return window.SEASENSE.months[(m - 1 + 12) 
         /* ---------- 設定（要改圖片路徑、觸發方式，改這裡） ---------- */
         var CONFIG = {
             imgDir: '網頁生物插圖',
-            imgExts: ['.png', '.webp', '.jpg', '.jpeg', '.svg', '.PNG', '.WEBP', '.JPG', '.JPEG', ''],   // 依序嘗試，找到就用；最後一個是「沒有副檔名」
+            imgDirs: ['網頁生物插圖/', ''],   // 先找資料夾；找不到再找和 index.html 同一層（GitHub 上直接全部放在最外層也行）
+            imgExts: ['.webp', '.png', '.jpg', '.jpeg', '.svg', '.PNG', '.WEBP', '.JPG', '.JPEG', ''],   // 依序嘗試，找到就用；最後一個是「沒有副檔名」
             imgPath: function (n, ext) { return CONFIG.imgDir + '/mon.' + n + ext; }, // 生物圖：網頁生物插圖/mon.1 ～ mon.12
             hoverDelay: 450,   // 懸停多久（毫秒）後展開小資訊頁
             photoDir: '海生動物照片',   // 真實照片：海生動物照片/生物名稱/生物名稱_1.jpg ～ _3.jpg
-            photoExts: ['jpg', 'jpeg', 'png', 'webp', 'JPG', 'JPEG', 'PNG', 'WEBP'],   // 會依序嘗試這些副檔名
+            photoExts: ['jpg', 'webp', 'jpeg', 'png', 'JPG', 'JPEG', 'PNG', 'WEBP'],   // 會依序嘗試這些副檔名
             slideInterval: 8000,        // 作品頁圖片輪播：每張停留幾毫秒（8000 = 8 秒）
             slideFade: 800,            // 換圖淡入淡出的毫秒數
             slidePauseOnHover: true,   // 滑鼠移到圖片上時暫停自動輪播，方便手動切換
@@ -4707,16 +4708,20 @@ window.SEASENSE.get = function (m) { return window.SEASENSE.months[(m - 1 + 12) 
             var svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="' + s[0] + '"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#6E8BFF"/><stop offset="1" stop-color="#2230E0"/></linearGradient></defs><g fill="url(#g)">' + s[1] + '</g></svg>';
             return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
         }
-        var imgExt = null;   // 找到可用的副檔名後記住，之後直接用
+        var imgHit = null;   // 找到可用的「資料夾＋副檔名」後記住，下一張先試它
         function setImg(img, n) {
             img.dataset.mon = n;
-            var list = imgExt !== null ? [imgExt].concat(CONFIG.imgExts.filter(function (e) { return e !== imgExt; })) : CONFIG.imgExts, k = 0;   // 上一張成功的副檔名先試，其餘照舊（每張圖的格式可以不同：png / jpg / webp 混用）
+            var cand = [], seen = {};
+            function add(d, x) { var u = d + 'mon.' + n + x; if (!seen[u]) { seen[u] = 1; cand.push({ u: u, d: d, x: x }); } }
+            if (imgHit) add(imgHit.d, imgHit.x);
+            CONFIG.imgDirs.forEach(function (d) { CONFIG.imgExts.forEach(function (x) { add(d, x); }); });
+            var k = 0;
             (function tryNext() {
-                if (k >= list.length) { img.onerror = null; img.src = placeholder(n); return; }
-                var ext = list[k++];
+                if (k >= cand.length) { img.onerror = null; img.src = placeholder(n); return; }
+                var c = cand[k++];
                 img.onerror = tryNext;
-                img.onload = function () { imgExt = ext; img.onload = null; };
-                img.src = CONFIG.imgPath(n, ext);
+                img.onload = function () { imgHit = c; img.onload = null; };
+                img.src = c.u;
             })();
         }
         $$('img[data-mon]').forEach(function (i) { setImg(i, +i.dataset.mon); });
@@ -4743,7 +4748,7 @@ window.SEASENSE.get = function (m) { return window.SEASENSE.months[(m - 1 + 12) 
         }
         function loadPhoto(img, names, idx, n, tok) {
             var list = [];
-            names.forEach(function (nm) { CONFIG.photoExts.forEach(function (ext) { list.push(encodeURI(CONFIG.photoDir + '/' + nm + '/' + nm + '_' + idx + '.' + ext)); }); });
+            names.forEach(function (nm) { CONFIG.photoExts.forEach(function (ext) { list.push(encodeURI(nm + '_' + idx + '.' + ext)); list.push(encodeURI(CONFIG.photoDir + '/' + nm + '/' + nm + '_' + idx + '.' + ext)); }); });   // 同層：名稱_1.jpg；資料夾：海生動物照片/名稱/名稱_1.jpg
             (function next(k) {
                 if (k >= list.length || img._tok !== tok) return;     // 找不到就保留灰格
                 var t = new Image();
@@ -5216,12 +5221,14 @@ window.SEASENSE.get = function (m) { return window.SEASENSE.months[(m - 1 + 12) 
            作品頁圖片輪播：自動（預設每 0.5 秒）＋ 左右點擊／左右鍵手動切換
            圖片路徑：mockup/VISUAL.01、mockup/VISUAL.02 …（副檔名自動判斷）
            ===================================================== */
-        var SLIDE_EXTS = ['.png', '.jpg', '.jpeg', '.webp', '.JPG', '.PNG', '.JPEG', '.WEBP', ''];
+        var SLIDE_EXTS = ['.webp', '.png', '.jpg', '.jpeg', '.JPG', '.PNG', '.JPEG', '.WEBP', ''];
         function probeSlide(name, idx, cb) {
-            var n = (idx < 10 ? '0' : '') + idx, k = 0;
+            var n = (idx < 10 ? '0' : '') + idx, cand = [];
+            [CONFIG.slideDir + '/', ''].forEach(function (d) { SLIDE_EXTS.forEach(function (x) { cand.push(d + name + '.' + n + x); }); });
+            var k = 0;
             (function tryNext() {
-                if (k >= SLIDE_EXTS.length) { cb(null); return; }
-                var url = CONFIG.slideDir + '/' + name + '.' + n + SLIDE_EXTS[k++], im = new Image();
+                if (k >= cand.length) { cb(null); return; }
+                var url = cand[k++], im = new Image();
                 im.onload = function () { cb(url); };
                 im.onerror = tryNext;
                 im.src = url;
