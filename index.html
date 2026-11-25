@@ -5222,29 +5222,39 @@ window.SEASENSE.get = function (m) { return window.SEASENSE.months[(m - 1 + 12) 
            圖片路徑：mockup/VISUAL.01、mockup/VISUAL.02 …（副檔名自動判斷）
            ===================================================== */
         var SLIDE_EXTS = ['.webp', '.png', '.jpg', '.jpeg', '.JPG', '.PNG', '.JPEG', '.WEBP', ''];
-        function probeSlide(name, idx, cb) {
-            var n = (idx < 10 ? '0' : '') + idx, cand = [];
-            [CONFIG.slideDir + '/', ''].forEach(function (d) { SLIDE_EXTS.forEach(function (x) { cand.push(d + name + '.' + n + x); }); });
+        // 找圖：只有「第 1 張」需要試各種資料夾／副檔名；找到格式後，其餘張數用同一種格式「同時」載入（不再一張一張排隊）
+        var slideHit = null;
+        function probeSlide(name, idx, cb, onlyKnown) {
+            var n = (idx < 10 ? '0' : '') + idx, cand = [], seen = {};
+            function add(d, x) { var u = d + name + '.' + n + x; if (!seen[u]) { seen[u] = 1; cand.push({ u: u, d: d, x: x }); } }
+            if (slideHit) add(slideHit.d, slideHit.x);
+            if (!onlyKnown || !slideHit) [CONFIG.slideDir + '/', ''].forEach(function (d) { SLIDE_EXTS.forEach(function (x) { add(d, x); }); });
             var k = 0;
             (function tryNext() {
                 if (k >= cand.length) { cb(null); return; }
-                var url = cand[k++], im = new Image();
-                im.onload = function () { cb(url); };
+                var c = cand[k++], im = new Image();
+                im.onload = function () { slideHit = c; cb(c.u); };
                 im.onerror = tryNext;
-                im.src = url;
+                im.src = c.u;
             })();
         }
         function loadSlideList(names, done) {
-            var ni = 0, out = [];
+            var ni = 0;
             (function nextName() {
-                if (ni >= names.length) { done(out); return; }
-                var name = names[ni++], i = 1;
-                (function nextIdx() {
-                    probeSlide(name, i, function (url) {
-                        if (url) { out.push(url); i++; if (i <= 60) { nextIdx(); return; } }
-                        if (out.length) done(out); else nextName();
-                    });
-                })();
+                if (ni >= names.length) { done([]); return; }
+                var name = names[ni++];
+                probeSlide(name, 1, function (first) {
+                    if (!first) { nextName(); return; }
+                    var MAX = 40, res = new Array(MAX + 1), left = MAX - 1;
+                    res[1] = first;
+                    if (left <= 0) { done([first]); return; }
+                    for (var i = 2; i <= MAX; i++) (function (i) {
+                        probeSlide(name, i, function (u) {
+                            res[i] = u;
+                            if (--left === 0) { var out = []; for (var j = 1; j <= MAX && res[j]; j++) out.push(res[j]); done(out); }
+                        }, true);
+                    })(i);
+                });
             })();
         }
         function initSlides(viewEl) {
@@ -5284,7 +5294,7 @@ window.SEASENSE.get = function (m) { return window.SEASENSE.months[(m - 1 + 12) 
                 if (started) return; started = true;
                 loadSlideList(names, function (urls) {
                     if (!urls.length) return;     // 還沒放圖：維持灰色佔位，不顯示控制鈕
-                    urls.forEach(function (u) { var im = new Image(); im.src = u; im.alt = ''; im.className = 'slide-img'; im.draggable = false; stack.appendChild(im); imgs.push(im); });
+                    urls.forEach(function (u) { var im = new Image(); im.src = u; im.alt = ''; im.decoding = 'async'; im.className = 'slide-img'; im.draggable = false; stack.appendChild(im); imgs.push(im); });
                     box.classList.add('has-slides', imgs.length > 1 ? 'multi' : 'single');
                     show(0); restart();
                 });
@@ -5292,6 +5302,8 @@ window.SEASENSE.get = function (m) { return window.SEASENSE.months[(m - 1 + 12) 
         }
         var slideStarters = {};
         Object.keys(pageEls).forEach(function (k) { slideStarters[k] = initSlides(pageEls[k]); });
+        // 首頁停留幾秒後，先在背景把三個作品頁的圖載好，之後點進去就是立刻出現
+        window.addEventListener('load', function () { setTimeout(function () { Object.keys(slideStarters).forEach(function (k) { slideStarters[k](); }); }, 2500); });
 
         $$('.nav-sub button').forEach(function (b) {
             b.addEventListener('click', function (e) { e.preventDefault(); openPage(b.dataset.go); b.blur(); });
