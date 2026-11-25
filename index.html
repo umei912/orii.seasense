@@ -4666,7 +4666,7 @@ window.SEASENSE.get = function (m) { return window.SEASENSE.months[(m - 1 + 12) 
         /* ---------- 設定（要改圖片路徑、觸發方式，改這裡） ---------- */
         var CONFIG = {
             imgDir: '網頁生物插圖',
-            imgDirs: ['網頁生物插圖/', ''],   // 先找資料夾；找不到再找和 index.html 同一層（GitHub 上直接全部放在最外層也行）
+            imgDirs: ['', '網頁生物插圖/'],   // 先找資料夾；找不到再找和 index.html 同一層（GitHub 上直接全部放在最外層也行）
             imgExts: ['.webp', '.png', '.jpg', '.jpeg', '.svg', '.PNG', '.WEBP', '.JPG', '.JPEG', ''],   // 依序嘗試，找到就用；最後一個是「沒有副檔名」
             imgPath: function (n, ext) { return CONFIG.imgDir + '/mon.' + n + ext; }, // 生物圖：網頁生物插圖/mon.1 ～ mon.12
             hoverDelay: 450,   // 懸停多久（毫秒）後展開小資訊頁
@@ -5228,7 +5228,7 @@ window.SEASENSE.get = function (m) { return window.SEASENSE.months[(m - 1 + 12) 
             var n = (idx < 10 ? '0' : '') + idx, cand = [], seen = {};
             function add(d, x) { var u = d + name + '.' + n + x; if (!seen[u]) { seen[u] = 1; cand.push({ u: u, d: d, x: x }); } }
             if (slideHit) add(slideHit.d, slideHit.x);
-            if (!onlyKnown || !slideHit) [CONFIG.slideDir + '/', ''].forEach(function (d) { SLIDE_EXTS.forEach(function (x) { add(d, x); }); });
+            if (!onlyKnown || !slideHit) ['', CONFIG.slideDir + '/'].forEach(function (d) { SLIDE_EXTS.forEach(function (x) { add(d, x); }); });
             var k = 0;
             (function tryNext() {
                 if (k >= cand.length) { cb(null); return; }
@@ -5238,7 +5238,7 @@ window.SEASENSE.get = function (m) { return window.SEASENSE.months[(m - 1 + 12) 
                 im.src = c.u;
             })();
         }
-        function loadSlideList(names, done) {
+        function loadSlideList(names, done, onFirst) {
             var ni = 0;
             (function nextName() {
                 if (ni >= names.length) { done([]); return; }
@@ -5246,7 +5246,7 @@ window.SEASENSE.get = function (m) { return window.SEASENSE.months[(m - 1 + 12) 
                 probeSlide(name, 1, function (first) {
                     if (!first) { nextName(); return; }
                     var MAX = 40, res = new Array(MAX + 1), left = MAX - 1;
-                    res[1] = first;
+                    res[1] = first; if (onFirst) onFirst(first);
                     if (left <= 0) { done([first]); return; }
                     for (var i = 2; i <= MAX; i++) (function (i) {
                         probeSlide(name, i, function (u) {
@@ -5292,11 +5292,15 @@ window.SEASENSE.get = function (m) { return window.SEASENSE.months[(m - 1 + 12) 
             });
             return function start() {          // 第一次打開頁面時才去找圖片
                 if (started) return; started = true;
+                function addImg(u) { var im = new Image(); im.src = u; im.alt = ''; im.decoding = 'async'; im.className = 'slide-img'; im.draggable = false; stack.appendChild(im); imgs.push(im); }
                 loadSlideList(names, function (urls) {
                     if (!urls.length) return;     // 還沒放圖：維持灰色佔位，不顯示控制鈕
-                    urls.forEach(function (u) { var im = new Image(); im.src = u; im.alt = ''; im.decoding = 'async'; im.className = 'slide-img'; im.draggable = false; stack.appendChild(im); imgs.push(im); });
+                    urls.slice(imgs.length).forEach(addImg);
                     box.classList.add('has-slides', imgs.length > 1 ? 'multi' : 'single');
-                    show(0); restart();
+                    if (imgs.length > 1) box.classList.remove('single');
+                    show(idx); restart();
+                }, function (first) {              // 第一張一找到就先顯示，不等其他張
+                    addImg(first); box.classList.add('has-slides', 'single'); show(0);
                 });
             };
         }
