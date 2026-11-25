@@ -2593,6 +2593,7 @@
       }
       .workspace-grid {
         height: 100vh;   /* 網站上方已有固定的 80px 導覽列，這個頁面不再自帶導覽列 */
+        grid-template-rows: minmax(0, 1fr);
       }
     }
 
@@ -2770,7 +2771,7 @@
 
       <!-- 動態旋轉 SVG 圓盤容器（位置偏左，重現參考圖大圓盤局部跨幅構圖） -->
       <div class="relative w-full h-full flex items-center justify-center overflow-hidden">
-        <svg id="calendarWheelSvg" viewBox="-560 -560 1120 1120" class="w-[138%] max-w-none lg:w-[132%] h-auto -translate-x-[16%] lg:-translate-x-[17%] drop-shadow-[0_12px_28px_rgba(0,0,0,0.12)]">
+        <div class="w-[138%] max-w-none lg:w-[min(132%,116vh)] -translate-x-[16%] lg:-translate-x-[17%]"><svg id="calendarWheelSvg" viewBox="-560 -560 1120 1120" class="w-full h-auto block" style="will-change: transform;">
           <defs>
             <!-- 圓盤路徑定義區（由 JS 動態填入文字弧線） -->
             <g id="wheelDefs"></g>
@@ -2797,11 +2798,11 @@
             <circle cx="0" cy="0" r="112" fill="none" stroke="rgba(255,255,255,0.14)" stroke-width="0.6" />
             <g id="starfieldLayer"></g>
           </g>
-        </svg>
+        </svg></div>
       </div>
 
       <!-- 左下角互動提示與當前生物簡述卡片 -->
-      <div class="absolute bottom-4 left-5 right-5 lg:right-auto lg:max-w-[340px] z-20 bg-[#F4F3EF]/92 backdrop-blur-sm border border-black/25 p-3 shadow-sm">
+      <div class="absolute bottom-4 left-5 right-5 lg:right-auto lg:max-w-[340px] z-20 bg-[#F4F3EF]/92 border border-black/25 p-3 shadow-sm">
         <div class="flex items-center justify-between border-b border-black/15 pb-1.5 mb-1.5">
           <span class="font-mono-tech text-[10px] tracking-[0.2em] uppercase text-black/65" id="wheelCardSeason">WINTER ・ 01月</span>
           <span class="font-mono-tech text-[10px] px-1.5 py-0.5 bg-black text-white rounded-sm" id="wheelCardStatus">保育類 I 級</span>
@@ -3700,6 +3701,7 @@
     let isHoveringWheel = false;
 
     const wheelGroup = document.getElementById("rotatingWheelGroup");
+    const wheelSvgEl = document.getElementById("calendarWheelSvg");
     const svgNS = "http://www.w3.org/2000/svg";
 
     /**
@@ -4284,7 +4286,7 @@
         }
       }
 
-      wheelGroup.setAttribute("transform", `rotate(${currentAngle.toFixed(3)})`);
+      wheelSvgEl.style.transform = `rotate(${currentAngle.toFixed(3)}deg)`;   // 用 CSS 旋轉整張 SVG：只繪製一次，之後由 GPU 轉動，不再逐幀重繪向量
       requestAnimationFrame(animateWheel);
     }
 
@@ -4347,6 +4349,52 @@
 
     window.addEventListener("DOMContentLoaded", initDashboard);
   <\/script>
+
+<script>
+/* 效能與版面保險（不改外觀）：
+   1) 紙張/海圖的「噪點」原本用 SVG feTurbulence 即時運算，很吃效能 → 改成一次畫好的小圖磚，外觀幾乎相同、卻不再拖慢畫面。
+   2) 右下角資料面板若因字體較高而被裁切 → 自動把上方地圖縮短一點，讓下方內容完整顯示。 */
+(function () {
+  function tile(r, g, b, amax) {
+    var c = document.createElement('canvas'); c.width = c.height = 192;
+    var x = c.getContext('2d'), d = x.createImageData(192, 192);
+    for (var i = 0; i < d.data.length; i += 4) {
+      d.data[i] = r + (Math.random() * 40 - 20); d.data[i + 1] = g + (Math.random() * 40 - 20); d.data[i + 2] = b + (Math.random() * 40 - 20);
+      d.data[i + 3] = Math.random() * amax * 255;
+    }
+    x.putImageData(d, 0, 0); return c.toDataURL('image/png');
+  }
+  function noise() {
+    var p = document.querySelector('[style*="paperNoise"]'), m = document.querySelector('[style*="mapGrunge"]');
+    if (p) { p.style.filter = 'none'; p.style.background = 'url(' + tile(128, 128, 128, .11) + ')'; }
+    if (m) { m.style.filter = 'none'; m.style.background = 'url(' + tile(230, 235, 242, .16) + ')'; }
+  }
+  var chart, panel, col, raf = 0;
+  function over(el) { return Math.max(0, el.scrollHeight - el.clientHeight); }
+  function fit() {
+    raf = 0;
+    if (!chart || !panel) return;
+    if (innerWidth < 1024) { chart.style.height = ''; return; }
+    chart.style.height = '';
+    var o = over(panel); Array.prototype.forEach.call(panel.children, function (c) { o = Math.max(o, over(c)); });
+    if (o > 0) chart.style.height = Math.max(chart.offsetHeight - o - 2, col.clientHeight * .3) + 'px';
+  }
+  function queue() { if (!raf) raf = requestAnimationFrame(fit); }
+  function init() {
+    noise();
+    chart = document.querySelector('.ocean-chart-surface');
+    if (!chart) return;
+    col = chart.parentElement; panel = col.querySelector(':scope > .flex-1');
+    if (!panel) return;
+    new MutationObserver(queue).observe(panel, { childList: true, subtree: true, characterData: true });
+    addEventListener('resize', queue);
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(queue);
+    setTimeout(queue, 300); setTimeout(queue, 1500);
+    queue();
+  }
+  if (document.readyState === 'loading') addEventListener('DOMContentLoaded', init); else init();
+})();
+<\/script>
 </body>
 </html></script>
 
@@ -5171,8 +5219,18 @@ window.SEASENSE.get = function (m) { return window.SEASENSE.months[(m - 1 + 12) 
            se2 黑色日曆下方的 CLICK → 生態曆頁面（單獨的頁面，放在 iframe 裡，樣式和程式互不干擾）
            ===================================================== */
         var ecoLoaded = false;
+        // 生態曆原本是為「高度約 880px 以上」的視窗排版的。視窗比較矮時（筆電、瀏覽器有書籤列…），
+        // 整個頁面等比例縮小到完整放得下，而不是把下面的資料面板切掉。
+        var ECO_DESIGN_H = 800;
+        function fitEco() {
+            var H = innerHeight - 80, W = innerWidth, s = (W >= 1024 && H < ECO_DESIGN_H) ? H / ECO_DESIGN_H : 1;
+            if (s >= 1) { ecoFrame.style.cssText = ''; return; }
+            ecoFrame.style.cssText = 'width:' + (W / s) + 'px;height:' + ECO_DESIGN_H + 'px;transform:scale(' + s + ');transform-origin:0 0;';
+        }
+        window.addEventListener('resize', fitEco);
         function openEco(x, y) {
             if (busy || current !== 'ocean') return; busy = true;
+            fitEco();
             if (!ecoLoaded) {
                 ecoLoaded = true;
                 ecoFrame.srcdoc = $('#ecoSrc').textContent.replace(/<\\\/script/g, '</script');
